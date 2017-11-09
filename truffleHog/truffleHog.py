@@ -11,19 +11,23 @@ import os
 import json
 import stat
 from git import Repo
+from urlparse import urlparse
+
+BASE64_CHARS = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/="
+HEX_CHARS = "1234567890abcdefABCDEF"
 
 def main():
     parser = argparse.ArgumentParser(description='Find secrets hidden in the depths of git.')
     parser.add_argument('--json', dest="output_json", action="store_true", help="Output in JSON")
-    parser.add_argument('git_url', type=str, help='URL for secret searching')
+    parser.add_argument('source_location', type=str, help='Local path or Git URL for secret searching')
     args = parser.parse_args()
-    output = find_strings(args.git_url, args.output_json)
-    project_path = output["project_path"]
-    shutil.rmtree(project_path, onerror=del_rw)
-
-
-BASE64_CHARS = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/="
-HEX_CHARS = "1234567890abcdefABCDEF"
+    url = urlparse(args.source_location)
+    if not url.scheme:
+        find_strings_in_dir(args.source_location, args.output_json)
+    else:
+        output = find_strings(args.source_location, args.output_json)
+        project_path = output["project_path"]
+        shutil.rmtree(project_path, onerror=del_rw)
 
 def del_rw(action, name, exc):
     os.chmod(name, stat.S_IWRITE)
@@ -75,7 +79,7 @@ def clone_git_repo(git_url):
     Repo.clone_from(git_url, project_path)
     return project_path
 
-def print_results(printJson, commit_time, branch_name, prev_commit, printableDiff):
+def print_results(printJson, output, commit_time, branch_name, prev_commit, printableDiff):
     if printJson:
         print(json.dumps(output, sort_keys=True, indent=4))
     else:
@@ -84,6 +88,8 @@ def print_results(printJson, commit_time, branch_name, prev_commit, printableDif
             print(dateStr)
             branchStr = "{}Branch: {}{}".format(bcolors.OKGREEN, branch_name, bcolors.ENDC)
             print(branchStr)
+            commitStrId = "{}Commit id: {}{}".format(bcolors.OKGREEN, prev_commit.name_rev, bcolors.ENDC)
+            print(commitStrId)
             commitStr = "{}Commit: {}{}".format(bcolors.OKGREEN, prev_commit.message, bcolors.ENDC)
             print(commitStr)
             print(printableDiff)
@@ -92,10 +98,56 @@ def print_results(printJson, commit_time, branch_name, prev_commit, printableDif
             print(dateStr)
             branchStr = "{}Branch: {}{}".format(bcolors.OKGREEN, branch_name.encode('utf-8'), bcolors.ENDC)
             print(branchStr)
-            commitStr = "{}Commit: {}{}".format(bcolors.OKGREEN, prev_commit.message.encode('utf-8'), bcolors.ENDC)
+            commitStrId = "{}Commit id: {}{}".format(bcolors.OKGREEN, prev_commit.hexsha, bcolors.ENDC)
+            print(commitStrId)
+            commitStr = "{}Commit message: {}{}".format(bcolors.OKGREEN, prev_commit.message.encode('utf-8'), bcolors.ENDC)
             print(commitStr)
             print(printableDiff.encode('utf-8'))
 
+# Serch an actual directory
+def find_strings_in_dir(directory, printJson=False):
+    res = { }
+    for root, subdirs, files in os.walk(directory):
+        files = [f for f in files if not f == '.gitignore']
+        subdirs[:] = [d for d in subdirs if not d[0] == '.']
+        for f in files:
+            full_path = os.path.join(root, f)
+            # Chop the directory from the left.
+            display_path = full_path[len(directory) + 1 :]
+
+            text = open(full_path, 'r').read()
+            flagged_strings = find_strings_for_text(text, display_path)
+            res.update(flagged_strings)
+
+    if printJson:
+        print(json.dumps(res, sort_keys=True, indent=4))
+    else:
+        for title in res.keys():
+            print(title + '\t' + res[title])
+
+def find_strings_for_text(text, title, printableDiff=None):
+     lines = text.split("\n")
+
+     stringsFound = { }
+     for idx, line in enumerate(lines):
+         for word in line.split():
+             base64_strings = get_strings_of_set(word, BASE64_CHARS)
+             hex_strings = get_strings_of_set(word, HEX_CHARS)
+             for string in base64_strings:
+                 b64Entropy = shannon_entropy(string, BASE64_CHARS)
+                 if b64Entropy > 4.5:
+                    stringsFound[title + ':' + str(idx)] = string
+                    if printableDiff:
+                         printableDiff = printableDiff.replace(string, bcolors.WARNING + string + bcolors.ENDC)
+             for string in hex_strings:
+                 hexEntropy = shannon_entropy(string, HEX_CHARS)
+                 if hexEntropy > 3:
+                     stringsFound[title + ':' + str(idx)] = string
+                     if printableDiff:
+                         printableDiff = printableDiff.replace(string, bcolors.WARNING + string + bcolors.ENDC)
+     return stringsFound
+
+# Search Through a Git directory (either from Git URL like https://github.com/user/project.git or from file:///home/user/directory)
 def find_strings(git_url, printJson=False):
     output = {"entropicDiffs": []}
     project_path = clone_git_repo(git_url)
@@ -127,33 +179,23 @@ def find_strings(git_url, printJson=False):
                     printableDiff = blob.diff.decode('utf-8', errors='replace')
                     if printableDiff.startswith("Binary files"):
                         continue
-                    stringsFound = []
-                    lines = blob.diff.decode('utf-8', errors='replace').split("\n")
-                    for line in lines:
-                        for word in line.split():
-                            base64_strings = get_strings_of_set(word, BASE64_CHARS)
-                            hex_strings = get_strings_of_set(word, HEX_CHARS)
-                            for string in base64_strings:
-                                b64Entropy = shannon_entropy(string, BASE64_CHARS)
-                                if b64Entropy > 4.5:
-                                    stringsFound.append(string)
-                                    printableDiff = printableDiff.replace(string, bcolors.WARNING + string + bcolors.ENDC)
-                            for string in hex_strings:
-                                hexEntropy = shannon_entropy(string, HEX_CHARS)
-                                if hexEntropy > 3:
-                                    stringsFound.append(string)
-                                    printableDiff = printableDiff.replace(string, bcolors.WARNING + string + bcolors.ENDC)
+
+                    diff_text = blob.diff.decode('utf-8', errors='replace')
+                    stringsFound = find_strings_for_text(diff_text, str(curr_commit), printableDiff)
+
                     if len(stringsFound) > 0:
+                        stringsFound = stringsFound.values()
                         commit_time =  datetime.datetime.fromtimestamp(prev_commit.committed_date).strftime('%Y-%m-%d %H:%M:%S')
                         entropicDiff = {}
                         entropicDiff['date'] = commit_time
                         entropicDiff['branch'] = branch_name
                         entropicDiff['commit'] = prev_commit.message
-                        entropicDiff['diff'] = blob.diff.decode('utf-8', errors='replace') 
+                        entropicDiff['commit_id'] = prev_commit.hexsha
+                        entropicDiff['diff'] = blob.diff.decode('utf-8', errors='replace')
                         entropicDiff['stringsFound'] = stringsFound
                         output["entropicDiffs"].append(entropicDiff)
 
-                        print_results(printJson, commit_time, branch_name, prev_commit, printableDiff)
+                        print_results(printJson, output, commit_time, branch_name, prev_commit, printableDiff)
             prev_commit = curr_commit
     output["project_path"] = project_path
     return output
