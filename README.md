@@ -33,14 +33,14 @@ python setup.py install
 truffleHog <path> [<options>]
 ```
 
-<path> is one of the following :
+``path`` is one of the following :
 - https://github.com/dxa4481/truffleHog.git : will clone a repository and check the content of Git history (commits)
 - file:///user/dxa4481/codeprojects/truffleHog/ : will check the content of Git history (commits) from a local Git directory
 - /user/dxa4481/codeprojects/truffleHog/ : will check recursively the content of a directory
 
-<option> are :
+``option`` can be :
 
---json 
+``--json``
 To format results as JSON
 
 ## How it works
