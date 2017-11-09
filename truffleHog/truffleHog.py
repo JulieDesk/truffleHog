@@ -16,6 +16,7 @@ from urlparse import urlparse
 BASE64_CHARS = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/="
 HEX_CHARS = "1234567890abcdefABCDEF"
 
+
 def main():
     parser = argparse.ArgumentParser(description='Find secrets hidden in the depths of git.')
     parser.add_argument('--json', dest="output_json", action="store_true", help="Output in JSON")
@@ -29,9 +30,11 @@ def main():
         project_path = output["project_path"]
         shutil.rmtree(project_path, onerror=del_rw)
 
+
 def del_rw(action, name, exc):
     os.chmod(name, stat.S_IWRITE)
     os.remove(name)
+
 
 def shannon_entropy(data, iterator):
     """
@@ -64,6 +67,7 @@ def get_strings_of_set(word, char_set, threshold=20):
         strings.append(letters)
     return strings
 
+
 class bcolors:
     HEADER = '\033[95m'
     OKBLUE = '\033[94m'
@@ -74,10 +78,12 @@ class bcolors:
     BOLD = '\033[1m'
     UNDERLINE = '\033[4m'
 
+
 def clone_git_repo(git_url):
     project_path = tempfile.mkdtemp()
     Repo.clone_from(git_url, project_path)
     return project_path
+
 
 def print_results(printJson, output, commit_time, branch_name, prev_commit, printableDiff):
     if printJson:
@@ -104,16 +110,17 @@ def print_results(printJson, output, commit_time, branch_name, prev_commit, prin
             print(commitStr)
             print(printableDiff.encode('utf-8'))
 
+
 # Serch an actual directory
 def find_strings_in_dir(directory, printJson=False):
-    res = { }
+    res = {}
     for root, subdirs, files in os.walk(directory):
         files = [f for f in files if not f == '.gitignore']
         subdirs[:] = [d for d in subdirs if not d[0] == '.']
         for f in files:
             full_path = os.path.join(root, f)
             # Chop the directory from the left.
-            display_path = full_path[len(directory) + 1 :]
+            display_path = full_path[len(directory) + 1:]
 
             text = open(full_path, 'r').read()
             flagged_strings = find_strings_for_text(text, display_path)
@@ -125,27 +132,29 @@ def find_strings_in_dir(directory, printJson=False):
         for title in res.keys():
             print(title + '\t' + res[title])
 
-def find_strings_for_text(text, title, printableDiff=None):
-     lines = text.split("\n")
 
-     stringsFound = { }
-     for idx, line in enumerate(lines):
-         for word in line.split():
-             base64_strings = get_strings_of_set(word, BASE64_CHARS)
-             hex_strings = get_strings_of_set(word, HEX_CHARS)
-             for string in base64_strings:
-                 b64Entropy = shannon_entropy(string, BASE64_CHARS)
-                 if b64Entropy > 4.5:
+def find_strings_for_text(text, title, printableDiff=None):
+    lines = text.split("\n")
+
+    stringsFound = {}
+    for idx, line in enumerate(lines):
+        for word in line.split():
+            base64_strings = get_strings_of_set(word, BASE64_CHARS)
+            hex_strings = get_strings_of_set(word, HEX_CHARS)
+            for string in base64_strings:
+                b64Entropy = shannon_entropy(string, BASE64_CHARS)
+                if b64Entropy > 4.5:
                     stringsFound[title + ':' + str(idx)] = string
                     if printableDiff:
-                         printableDiff = printableDiff.replace(string, bcolors.WARNING + string + bcolors.ENDC)
-             for string in hex_strings:
-                 hexEntropy = shannon_entropy(string, HEX_CHARS)
-                 if hexEntropy > 3:
-                     stringsFound[title + ':' + str(idx)] = string
-                     if printableDiff:
-                         printableDiff = printableDiff.replace(string, bcolors.WARNING + string + bcolors.ENDC)
-     return stringsFound
+                        printableDiff = printableDiff.replace(string, bcolors.WARNING + string + bcolors.ENDC)
+            for string in hex_strings:
+                hexEntropy = shannon_entropy(string, HEX_CHARS)
+                if hexEntropy > 3:
+                    stringsFound[title + ':' + str(idx)] = string
+                    if printableDiff:
+                        printableDiff = printableDiff.replace(string, bcolors.WARNING + string + bcolors.ENDC)
+    return stringsFound
+
 
 # Search Through a Git directory (either from Git URL like https://github.com/user/project.git or from file:///home/user/directory)
 def find_strings(git_url, printJson=False):
@@ -158,7 +167,7 @@ def find_strings(git_url, printJson=False):
         branch_name = remote_branch.name.split('/')[1]
         try:
             repo.git.checkout(remote_branch, b=branch_name)
-        except:
+        except Exception:
             pass
 
         prev_commit = None
@@ -166,7 +175,7 @@ def find_strings(git_url, printJson=False):
             if not prev_commit:
                 pass
             else:
-                #avoid searching the same diffs
+                # avoid searching the same diffs
                 hashes = str(prev_commit) + str(curr_commit)
                 if hashes in already_searched:
                     prev_commit = curr_commit
@@ -175,7 +184,7 @@ def find_strings(git_url, printJson=False):
 
                 diff = prev_commit.diff(curr_commit, create_patch=True)
                 for blob in diff:
-                    #print i.a_blob.data_stream.read()
+                    # print i.a_blob.data_stream.read()
                     printableDiff = blob.diff.decode('utf-8', errors='replace')
                     if printableDiff.startswith("Binary files"):
                         continue
@@ -185,7 +194,7 @@ def find_strings(git_url, printJson=False):
 
                     if len(stringsFound) > 0:
                         stringsFound = stringsFound.values()
-                        commit_time =  datetime.datetime.fromtimestamp(prev_commit.committed_date).strftime('%Y-%m-%d %H:%M:%S')
+                        commit_time = datetime.datetime.fromtimestamp(prev_commit.committed_date).strftime('%Y-%m-%d %H:%M:%S')
                         entropicDiff = {}
                         entropicDiff['date'] = commit_time
                         entropicDiff['branch'] = branch_name
@@ -199,6 +208,7 @@ def find_strings(git_url, printJson=False):
             prev_commit = curr_commit
     output["project_path"] = project_path
     return output
+
 
 if __name__ == "__main__":
     main()
