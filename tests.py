@@ -30,9 +30,10 @@ class TestStringMethods(unittest.TestCase):
 
     def test_find_strings_in_dir(self):
         try:
-            truffleHog.find_strings_in_dir("/Users/xavier/Development/Projects/truffleHog", True)
+            truffleHog.find_strings_in_dir(".", True)
         except UnicodeEncodeError:
             self.fail("Unicode print error")
+
 
 if __name__ == '__main__':
     unittest.main()

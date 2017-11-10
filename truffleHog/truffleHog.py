@@ -114,13 +114,14 @@ def print_results(printJson, output, commit_time, branch_name, prev_commit, prin
 # Serch an actual directory
 def find_strings_in_dir(directory, printJson=False):
     res = {}
-    for root, subdirs, files in os.walk(directory):
+    stripped_dir = directory.rstrip('/')
+    for root, subdirs, files in os.walk(stripped_dir):
         files = [f for f in files if not f == '.gitignore']
         subdirs[:] = [d for d in subdirs if not d[0] == '.']
         for f in files:
             full_path = os.path.join(root, f)
             # Chop the directory from the left.
-            display_path = full_path[len(directory) + 1:]
+            display_path = full_path[len(stripped_dir) + 1:]
 
             text = open(full_path, 'r').read()
             flagged_strings = find_strings_for_text(text, display_path)
