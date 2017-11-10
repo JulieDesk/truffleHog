@@ -148,12 +148,16 @@ def find_strings_for_text(text, title, printableDiff=None):
                     stringsFound[title + ':' + str(idx)] = string
                     if printableDiff:
                         printableDiff = printableDiff.replace(string, bcolors.WARNING + string + bcolors.ENDC)
+                        stringsFound['printableDiff'] = printableDiff
+
             for string in hex_strings:
                 hexEntropy = shannon_entropy(string, HEX_CHARS)
                 if hexEntropy > 3:
                     stringsFound[title + ':' + str(idx)] = string
                     if printableDiff:
                         printableDiff = printableDiff.replace(string, bcolors.WARNING + string + bcolors.ENDC)
+                        stringsFound['printableDiff'] = printableDiff
+
     return stringsFound
 
 
@@ -193,8 +197,11 @@ def find_strings(git_url, printJson=False):
                     diff_text = blob.diff.decode('utf-8', errors='replace')
                     stringsFound = find_strings_for_text(diff_text, str(curr_commit), printableDiff)
 
+                    if 'printableDiff' in stringsFound.keys():
+                        printableDiff = stringsFound['printableDiff']
+
                     if len(stringsFound) > 0:
-                        stringsFound = stringsFound.values()
+                        stringsFoundValues = stringsFound.values()
                         commit_time = datetime.datetime.fromtimestamp(prev_commit.committed_date).strftime('%Y-%m-%d %H:%M:%S')
                         entropicDiff = {}
                         entropicDiff['date'] = commit_time
@@ -202,7 +209,7 @@ def find_strings(git_url, printJson=False):
                         entropicDiff['commit'] = prev_commit.message
                         entropicDiff['commit_id'] = prev_commit.hexsha
                         entropicDiff['diff'] = blob.diff.decode('utf-8', errors='replace')
-                        entropicDiff['stringsFound'] = stringsFound
+                        entropicDiff['stringsFound'] = stringsFoundValues
                         output["entropicDiffs"].append(entropicDiff)
 
                         print_results(printJson, output, commit_time, branch_name, prev_commit, printableDiff)
