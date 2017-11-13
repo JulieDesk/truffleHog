@@ -54,9 +54,9 @@ Limit analysis only to commit strictly older than the end_date. Applies only to 
 ```
 
 Usage examples :
-``truffleHog <path> --start_date 2017-01-01`` : look only for commits newer than 2017-01-01 00:00:00
-``truffleHog <path> --end_date 2017-01-01 --json`` : look only for commits older than 2017-01-01 00:00:00 and print it as JSON
-``truffleHog <path> --start_date 2017-01-01 --end_date 2017-01-04`` : look only for commits newer than 2017-01-01 00:00:00 AND older than 2017-01-04 00:00:00
+- ``truffleHog <path> --start_date 2017-01-01`` : look only for commits newer than 2017-01-01 00:00:00
+- ``truffleHog <path> --end_date 2017-01-01 --json`` : look only for commits older than 2017-01-01 00:00:00 and print it as JSON
+- ``truffleHog <path> --start_date 2017-01-01 --end_date 2017-01-04`` : look only for commits newer than 2017-01-01 00:00:00 AND older than 2017-01-04 00:00:00
 
 ## How it works
 This module will go through the entire commit history of each branch, and check each diff from each commit, and evaluate the shannon entropy for both the base64 char set and hexidecimal char set for every blob of text greater than 20 characters comprised of those character sets in each diff. If at any point a high entropy string >20 characters is detected, it will print to the screen.
