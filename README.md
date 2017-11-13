@@ -19,7 +19,6 @@ To search a classic directory, use only the path of the directory like
 truffleHog /user/dxa4481/codeprojects/truffleHog/
 ```
 
-
 ## Install
 From source (clone repo and then):
 ```
@@ -30,7 +29,7 @@ python setup.py install
 ## Manual
 
 ```
-truffleHog <path> [--json] [--start_date <YYYY-MM-DD>] [--end_date <YYYY-MM-DD>]
+truffleHog <path> [--json] [--start_date <YYYY-MM-DD>] [--end_date <YYYY-MM-DD>] [--gitignore] [--fileignore <path_to_fileignore>]
 ```
 
 ``path`` is one of the following :
@@ -43,6 +42,14 @@ truffleHog <path> [--json] [--start_date <YYYY-MM-DD>] [--end_date <YYYY-MM-DD>]
 ```
 --json
 Format results as JSON
+```
+```
+--gitignore
+Ignore files listed in .gitignore in analyzed directory/git root directory
+```
+```
+--fileignore <path_to_fileignore>
+Ignore files listed in a custom <path_to_fileignore> (.gitignore syntax)
 ```
 ```
 --start_date YYYY-MM-DD

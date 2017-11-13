@@ -10,28 +10,57 @@ import tempfile
 import os
 import json
 import stat
+import fnmatch
 from git import Repo
 from urlparse import urlparse
 
 BASE64_CHARS = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/="
 HEX_CHARS = "1234567890abcdefABCDEF"
 
+file_filter_patterns = []
+
+
+def pathfilter(path):
+    for pat in file_filter_patterns:
+        if ("/" in pat) or ("\\" in pat):
+            if fnmatch.fnmatch(path, pat):
+                return None
+        else:
+            if fnmatch.fnmatch(os.path.basename(path), pat):
+                return None
+    return path
+
 
 def main():
+    # TODO : Add support for ignore files (.gitignore) in case of normal directory
     parser = argparse.ArgumentParser(description='Find secrets hidden in the depths of git.')
     parser.add_argument('--json', dest="output_json", action="store_true", help="Output in JSON")
+    parser.add_argument('--gitignore', dest="gitignore", action="store_true", help="Ignore files in .gitignore file")
+    parser.add_argument('--fileignore', dest="fileignore", help="Custom ignore files path")
     parser.add_argument('--start_date', dest="start_date", type=valid_date, help="Oldest date to consider in commit analysis. Format : YYYY-MM-DD")
     parser.add_argument('--end_date', dest="end_date", type=valid_date, help="Newest date to consider in commit analysis. Format : YYYY-MM-DD")
     parser.add_argument('source_location', type=str, help='Local path or Git URL for secret searching')
 
     args = parser.parse_args()
     url = urlparse(args.source_location)
+
     if not url.scheme:
-        find_strings_in_dir(args.source_location, args.output_json)
+        find_strings_in_dir(args.source_location, args.output_json, args.gitignore, args.fileignore)
     else:
-        output = find_strings(args.source_location, args.output_json, args.start_date, args.end_date)
+        output = find_strings(args.source_location, args.output_json, args.gitignore, args.fileignore, args.start_date, args.end_date)
         project_path = output["project_path"]
         shutil.rmtree(project_path, onerror=del_rw)
+
+
+def load_ignore_list(ignoreFile=""):
+    if ignoreFile != "" and ignoreFile is not None:
+        try:
+            with open(ignoreFile, 'r') as f:
+                for line in f:
+                    if not (line[0] == "#"):
+                        file_filter_patterns.append(line.rstrip())
+        except Exception:
+            pass
 
 
 def valid_date(s):
@@ -97,11 +126,13 @@ def clone_git_repo(git_url):
     return project_path
 
 
-def print_results(printJson, output, commit_time, branch_name, prev_commit, printableDiff):
+def print_results(printJson, output, commit_time, branch_name, prev_commit, printableDiff, filename):
     if printJson:
         print(json.dumps(output, sort_keys=True, indent=4))
     else:
         if sys.version_info >= (3, 0):
+            fileStr = "{}File: {}{}".format(bcolors.OKGREEN, filename, bcolors.ENDC)
+            print(fileStr)
             dateStr = "{}Date: {}{}".format(bcolors.OKGREEN, commit_time, bcolors.ENDC)
             print(dateStr)
             branchStr = "{}Branch: {}{}".format(bcolors.OKGREEN, branch_name, bcolors.ENDC)
@@ -112,6 +143,8 @@ def print_results(printJson, output, commit_time, branch_name, prev_commit, prin
             print(commitStr)
             print(printableDiff)
         else:
+            fileStr = "{}File: {}{}".format(bcolors.OKGREEN, filename, bcolors.ENDC)
+            print(fileStr)
             dateStr = "{}Date: {}{}".format(bcolors.OKGREEN, commit_time, bcolors.ENDC)
             print(dateStr)
             branchStr = "{}Branch: {}{}".format(bcolors.OKGREEN, branch_name.encode('utf-8'), bcolors.ENDC)
@@ -124,11 +157,17 @@ def print_results(printJson, output, commit_time, branch_name, prev_commit, prin
 
 
 # Serch an actual directory
-def find_strings_in_dir(directory, printJson=False):
+def find_strings_in_dir(directory, printJson=False, gitIgnore=False, fileIgnore=""):
     res = {}
     stripped_dir = directory.rstrip('/')
+
+    if gitIgnore:
+        load_ignore_list(stripped_dir+'/.gitignore')
+    if fileIgnore != "" and fileIgnore is not None:
+        load_ignore_list(fileIgnore)
+
     for root, subdirs, files in os.walk(stripped_dir):
-        files = [f for f in files if not f == '.gitignore']
+        files = [f for f in files if not f == '.gitignore' and pathfilter(f)]
         subdirs[:] = [d for d in subdirs if not d[0] == '.']
         for f in files:
             full_path = os.path.join(root, f)
@@ -174,11 +213,17 @@ def find_strings_for_text(text, title, printableDiff=None):
 
 
 # Search Through a Git directory (either from Git URL like https://github.com/user/project.git or from file:///home/user/directory)
-def find_strings(git_url, printJson=False, startDate="", endDate=""):
+def find_strings(git_url, printJson=False, gitIgnore=False, fileIgnore="", startDate="", endDate=""):
     output = {"entropicDiffs": []}
     project_path = clone_git_repo(git_url)
     repo = Repo(project_path)
     already_searched = set()
+
+    if gitIgnore:
+        load_ignore_list(repo.git_dir+'/../.gitignore')
+
+    if fileIgnore != "" and fileIgnore is not None:
+        load_ignore_list(fileIgnore)
 
     for remote_branch in repo.remotes.origin.fetch():
         branch_name = remote_branch.name.split('/')[1]
@@ -202,6 +247,10 @@ def find_strings(git_url, printJson=False, startDate="", endDate=""):
                 diff = prev_commit.diff(curr_commit, create_patch=True)
                 for blob in diff:
                     # print i.a_blob.data_stream.read()
+                    if blob.a_path:
+                        if not pathfilter(blob.a_path):
+                            continue
+
                     printableDiff = blob.diff.decode('utf-8', errors='replace')
                     if printableDiff.startswith("Binary files"):
                         continue
@@ -239,7 +288,7 @@ def find_strings(git_url, printJson=False, startDate="", endDate=""):
                         entropicDiff['stringsFound'] = stringsFoundValues
                         output["entropicDiffs"].append(entropicDiff)
 
-                        print_results(printJson, output, commit_time, branch_name, prev_commit, printableDiff)
+                        print_results(printJson, output, commit_time, branch_name, prev_commit, printableDiff, str(blob.a_path))
             prev_commit = curr_commit
     output["project_path"] = project_path
     return output
