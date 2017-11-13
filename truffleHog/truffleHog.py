@@ -20,15 +20,27 @@ HEX_CHARS = "1234567890abcdefABCDEF"
 def main():
     parser = argparse.ArgumentParser(description='Find secrets hidden in the depths of git.')
     parser.add_argument('--json', dest="output_json", action="store_true", help="Output in JSON")
+    parser.add_argument('--start_date', dest="start_date", type=valid_date, help="Oldest date to consider in commit analysis. Format : YYYY-MM-DD")
+    parser.add_argument('--end_date', dest="end_date", type=valid_date, help="Newest date to consider in commit analysis. Format : YYYY-MM-DD")
     parser.add_argument('source_location', type=str, help='Local path or Git URL for secret searching')
+
     args = parser.parse_args()
     url = urlparse(args.source_location)
     if not url.scheme:
         find_strings_in_dir(args.source_location, args.output_json)
     else:
-        output = find_strings(args.source_location, args.output_json)
+        output = find_strings(args.source_location, args.output_json, args.start_date, args.end_date)
         project_path = output["project_path"]
         shutil.rmtree(project_path, onerror=del_rw)
+
+
+def valid_date(s):
+    try:
+        datetime.datetime.strptime(s, "%Y-%m-%d")
+        return s
+    except ValueError:
+        msg = "Not a valid date: '{0}'.".format(s)
+        raise argparse.ArgumentTypeError(msg)
 
 
 def del_rw(action, name, exc):
@@ -162,7 +174,7 @@ def find_strings_for_text(text, title, printableDiff=None):
 
 
 # Search Through a Git directory (either from Git URL like https://github.com/user/project.git or from file:///home/user/directory)
-def find_strings(git_url, printJson=False):
+def find_strings(git_url, printJson=False, startDate="", endDate=""):
     output = {"entropicDiffs": []}
     project_path = clone_git_repo(git_url)
     repo = Repo(project_path)
@@ -203,6 +215,21 @@ def find_strings(git_url, printJson=False):
                     if len(stringsFound) > 0:
                         stringsFoundValues = stringsFound.values()
                         commit_time = datetime.datetime.fromtimestamp(prev_commit.committed_date).strftime('%Y-%m-%d %H:%M:%S')
+
+                        # If we have older commits than starting date, stop the analysis
+                        if startDate != "" and startDate is not None:
+                            if datetime.datetime.fromtimestamp(prev_commit.committed_date) < datetime.datetime.strptime(startDate, "%Y-%m-%d"):
+                                # print "Date limitation reached ("+startDate+"), stopping analysis"
+                                output["project_path"] = project_path
+                                return output
+
+                        # If we have older commits than starting date, stop the analysis
+                        if endDate != "" and endDate is not None:
+                            if datetime.datetime.fromtimestamp(prev_commit.committed_date) > datetime.datetime.strptime(endDate, "%Y-%m-%d"):
+                                # print prev_commit.committed_date
+                                # print "Commit too recent (max is "+endDate+"), ignoring analysis"
+                                continue
+
                         entropicDiff = {}
                         entropicDiff['date'] = commit_time
                         entropicDiff['branch'] = branch_name
