@@ -32,7 +32,6 @@ def pathfilter(path):
 
 
 def main():
-    # TODO : Add support for ignore files (.gitignore) in case of normal directory
     parser = argparse.ArgumentParser(description='Find secrets hidden in the depths of git.')
     parser.add_argument('--json', dest="output_json", action="store_true", help="Output in JSON")
     parser.add_argument('--gitignore', dest="gitignore", action="store_true", help="Ignore files in .gitignore file")
