@@ -140,8 +140,7 @@ def clone_git_repo(git_url):
     return project_path
 
 
-def print_results(printJson, issue, type = "git"):
-
+def print_results(printJson, issue, printFullContent=True):
 
     if "date" in issue:
         commit_time = issue['date']
@@ -182,7 +181,13 @@ def print_results(printJson, issue, type = "git"):
             else:
                 print("~~~~~~~~~~~~~~~~~~~~~")
 
-            print(printableDiff)
+            if printFullContent:
+                print(printableDiff)
+            else:
+                print "Matching strings :"
+                print ""
+                for stringFound in issue['stringsFound']:
+                    print stringFound
         else:
             if "branch" in issue:
                 branchStr = "{}Branch: {}{}".format(bcolors.OKGREEN, branch_name.encode('utf-8'), bcolors.ENDC)
@@ -193,7 +198,13 @@ def print_results(printJson, issue, type = "git"):
             else:
                 print("~~~~~~~~~~~~~~~~~~~~~")
 
-            print(printableDiff.encode('utf-8'))
+            if printFullContent:
+                print(printableDiff.encode('utf-8'))
+            else:
+                print "Matching strings :"
+                print ""
+                for stringFound in issue['stringsFound']:
+                    print stringFound
 
 
 # Search an actual directory
@@ -224,26 +235,26 @@ def find_strings_in_dir(directory, printJson=False, do_regex=False, do_entropy=T
                 found_regexes = regex_check(text, None, None, None, None, None, display_path)
                 foundIssues += found_regexes
             for foundIssue in foundIssues:
-                print_results(printJson, foundIssue)
+                print_results(printJson, foundIssue, False)
 
 
 def find_entropy(printableDiff, commit_time=None, branch_name=None, prev_commit=None, blob=None, commitHash=None, filePath=None):
     stringsFound = []
     lines = printableDiff.split("\n")
-    for line in lines:
+    for idx, line in enumerate(lines):
         for word in line.split():
             base64_strings = get_strings_of_set(word, BASE64_CHARS)
             hex_strings = get_strings_of_set(word, HEX_CHARS)
             for string in base64_strings:
                 b64Entropy = shannon_entropy(string, BASE64_CHARS)
                 if b64Entropy > 4.5:
-                    stringsFound.append(string)
                     printableDiff = printableDiff.replace(string, bcolors.WARNING + string + bcolors.ENDC)
+                    stringsFound.append("line "+str(idx)+" : "+string)
             for string in hex_strings:
                 hexEntropy = shannon_entropy(string, HEX_CHARS)
                 if hexEntropy > 3:
-                    stringsFound.append(string)
                     printableDiff = printableDiff.replace(string, bcolors.WARNING + string + bcolors.ENDC)
+                    stringsFound.append("line "+str(idx)+" : "+string)
     entropicDiff = None
     if len(stringsFound) > 0:
         entropicDiff = {}
