@@ -19,9 +19,20 @@ BASE64_CHARS = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/
 HEX_CHARS = "1234567890abcdefABCDEF"
 
 file_filter_patterns = []
+file_whitelist = []
+key_ignore_filter_patterns = []
 
 
 def pathfilter(path):
+    # Whitelist filename case. Limit only to file in the list if specified
+    if file_whitelist:
+        for f in file_whitelist:
+            if fnmatch.fnmatch(path, f):
+                return path
+
+        return None
+
+    # "Regexp" File name filtering (.gitignore style)
     for pat in file_filter_patterns:
         if ("/" in pat) or ("\\" in pat):
             if fnmatch.fnmatch(path, pat):
@@ -29,7 +40,17 @@ def pathfilter(path):
         else:
             if fnmatch.fnmatch(os.path.basename(path), pat):
                 return None
+
     return path
+
+
+def keyfilter(key):
+    # If key is in ignore list, ignore it
+    for pat in key_ignore_filter_patterns:
+        if fnmatch.fnmatch(key, pat):
+            return None
+
+    return key
 
 
 def main():
@@ -37,6 +58,8 @@ def main():
     parser.add_argument('--json', dest="output_json", action="store_true", help="Output in JSON")
     parser.add_argument('--gitignore', dest="gitignore", action="store_true", help="Ignore files in .gitignore file")
     parser.add_argument('--fileignore', dest="fileignore", help="Custom ignore files path")
+    parser.add_argument('--keyignore', dest="keyignore", help="Custom ignore false positive keys file path")
+    parser.add_argument('--filewhitelist', dest="filewhitelist", help="Custom whitelist of files to analyze")
     parser.add_argument('--start_date', dest="start_date", type=valid_date, help="Oldest date to consider in commit analysis. Format : YYYY-MM-DD")
     parser.add_argument('--end_date', dest="end_date", type=valid_date, help="Newest date to consider in commit analysis. Format : YYYY-MM-DD")
     parser.add_argument("--regex", dest="do_regex", action="store_true")
@@ -48,9 +71,9 @@ def main():
     url = urlparse(args.source_location)
 
     if not url.scheme:
-        find_strings_in_dir(args.source_location, args.output_json, args.do_regex, do_entropy, args.gitignore, args.fileignore)
+        find_strings_in_dir(args.source_location, args.output_json, args.do_regex, do_entropy, args.gitignore, args.fileignore, args.keyignore, args.filewhitelist)
     else:
-        output = find_strings(args.source_location, args.output_json, args.do_regex, do_entropy, args.gitignore, args.fileignore, args.start_date, args.end_date)
+        output = find_strings(args.source_location, args.output_json, args.do_regex, do_entropy, args.gitignore, args.fileignore, args.keyignore, args.filewhitelist, args.start_date, args.end_date)
         project_path = output["project_path"]
         shutil.rmtree(project_path, onerror=del_rw)
 
@@ -62,6 +85,24 @@ def load_ignore_list(ignoreFile=""):
                 for line in f:
                     if not (line[0] == "#"):
                         file_filter_patterns.append(line.rstrip())
+        except Exception:
+            pass
+
+
+def load_files_whitelist_list(filesListString=""):
+    if filesListString != "" and filesListString is not None:
+        file_list_split = filesListString.split(",")
+        for file_name in file_list_split:
+            file_whitelist.append(file_name)
+
+
+def load_key_ignore_file(ignoreFile=""):
+    if ignoreFile != "" and ignoreFile is not None:
+        try:
+            with open(ignoreFile, 'r') as f:
+                for line in f:
+                    if not (line[0] == "#"):
+                        key_ignore_filter_patterns.append(line.rstrip())
         except Exception:
             pass
 
@@ -208,16 +249,20 @@ def print_results(printJson, issue, printFullContent=True):
 
 
 # Search an actual directory
-def find_strings_in_dir(directory, printJson=False, do_regex=False, do_entropy=True, gitIgnore=False, fileIgnore=""):
+def find_strings_in_dir(directory, printJson=False, do_regex=False, do_entropy=True, gitIgnore=False, fileIgnore="", keyIgnore="", fileListWhitelist=""):
     stripped_dir = directory.rstrip('/')
 
     if gitIgnore:
         load_ignore_list(stripped_dir+'/.gitignore')
     if fileIgnore != "" and fileIgnore is not None:
         load_ignore_list(fileIgnore)
+    if fileListWhitelist != "" and fileListWhitelist is not None:
+        load_files_whitelist_list(fileListWhitelist)
+    if keyIgnore != "" and keyIgnore is not None:
+        load_key_ignore_file(keyIgnore)
 
     for root, subdirs, files in os.walk(stripped_dir):
-        files = [f for f in files if not f == '.gitignore' and pathfilter(f)]
+        files = [f for f in files if not f == '.gitignore' and pathfilter(os.path.join(root, f)[len(stripped_dir) + 1:])]
         subdirs[:] = [d for d in subdirs if not d[0] == '.']
         for f in files:
             full_path = os.path.join(root, f)
@@ -247,12 +292,12 @@ def find_entropy(printableDiff, commit_time=None, branch_name=None, prev_commit=
             hex_strings = get_strings_of_set(word, HEX_CHARS)
             for string in base64_strings:
                 b64Entropy = shannon_entropy(string, BASE64_CHARS)
-                if b64Entropy > 4.5:
+                if b64Entropy > 4.5 and keyfilter(string) is not None:
                     printableDiff = printableDiff.replace(string, bcolors.WARNING + string + bcolors.ENDC)
                     stringsFound.append("line "+str(idx)+" : "+string)
             for string in hex_strings:
                 hexEntropy = shannon_entropy(string, HEX_CHARS)
-                if hexEntropy > 3:
+                if hexEntropy > 3 and keyfilter(string) is not None:
                     printableDiff = printableDiff.replace(string, bcolors.WARNING + string + bcolors.ENDC)
                     stringsFound.append("line "+str(idx)+" : "+string)
     entropicDiff = None
@@ -283,8 +328,9 @@ def regex_check(printableDiff, commit_time=None, branch_name=None, prev_commit=N
     for key in regexes:
         found_strings = regexes[key].findall(printableDiff)
         for found_string in found_strings:
-            printableDiff = printableDiff.replace(printableDiff, bcolors.WARNING + found_string + bcolors.ENDC)
-        if found_strings:
+            if keyfilter(found_string) is not None:
+                printableDiff = printableDiff.replace(printableDiff, bcolors.WARNING + found_string + bcolors.ENDC)
+        if found_strings and keyfilter(found_string) is not None:
             foundRegex = {}
 
             if commit_time is not None:
@@ -309,7 +355,7 @@ def regex_check(printableDiff, commit_time=None, branch_name=None, prev_commit=N
 
 
 # Search Through a Git directory (either from Git URL like https://github.com/user/project.git or from file:///home/user/directory)
-def find_strings(git_url, printJson=False, do_regex=False, do_entropy=True, gitIgnore=False, fileIgnore="", startDate="", endDate=""):
+def find_strings(git_url, printJson=False, do_regex=False, do_entropy=True, gitIgnore=False, fileIgnore="", keyIgnore="", fileListWhitelist="", startDate="", endDate=""):
     output = {"entropicDiffs": []}
     project_path = clone_git_repo(git_url)
     repo = Repo(project_path)
@@ -320,6 +366,12 @@ def find_strings(git_url, printJson=False, do_regex=False, do_entropy=True, gitI
 
     if fileIgnore != "" and fileIgnore is not None:
         load_ignore_list(fileIgnore)
+
+    if fileListWhitelist != "" and fileListWhitelist is not None:
+        load_files_whitelist_list(fileListWhitelist)
+
+    if keyIgnore != "" and keyIgnore is not None:
+        load_key_ignore_file(keyIgnore)
 
     for remote_branch in repo.remotes.origin.fetch():
         branch_name = remote_branch.name.split('/')[1]

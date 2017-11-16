@@ -35,7 +35,7 @@ python setup.py install
 ## Manual
 
 ```
-truffleHog <path> [--json] [--start_date <YYYY-MM-DD>] [--end_date <YYYY-MM-DD>] [--gitignore] [--fileignore <path_to_fileignore>]
+truffleHog <path> [--json] [--start_date <YYYY-MM-DD>] [--end_date <YYYY-MM-DD>] [--gitignore] [--fileignore <path_to_fileignore>] [--keyignore <path_to_keyignore>] [--filewhitelist filepath1[,filpathN]]
 ```
 
 ``path`` is one of the following :
@@ -64,6 +64,14 @@ Ignore files listed in .gitignore in analyzed directory/git root directory
 ```
 --fileignore <path_to_fileignore>
 Ignore files listed in a custom <path_to_fileignore> (.gitignore syntax)
+```
+```
+--keyignore <path_to_keyignore>
+Ignore keys listed in a custom <path_to_fkeyignore> (regex syntax). Can be used as an false positive key regexp list
+```
+```
+--filewhitelist filepath1[,filpathN]
+Anlyze only file names that matches filepathX (regex syntax supported)
 ```
 ```
 --start_date YYYY-MM-DD
