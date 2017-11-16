@@ -288,6 +288,7 @@ def find_entropy(printableDiff, commit_time=None, branch_name=None, prev_commit=
     lines = printableDiff.split("\n")
     for idx, line in enumerate(lines):
         for word in line.split():
+            has_match = False
             base64_strings = get_strings_of_set(word, BASE64_CHARS)
             hex_strings = get_strings_of_set(word, HEX_CHARS)
             for string in base64_strings:
@@ -295,11 +296,14 @@ def find_entropy(printableDiff, commit_time=None, branch_name=None, prev_commit=
                 if b64Entropy > 4.5 and keyfilter(string) is not None:
                     printableDiff = printableDiff.replace(string, bcolors.WARNING + string + bcolors.ENDC)
                     stringsFound.append("line "+str(idx)+" : "+string)
-            for string in hex_strings:
-                hexEntropy = shannon_entropy(string, HEX_CHARS)
-                if hexEntropy > 3 and keyfilter(string) is not None:
-                    printableDiff = printableDiff.replace(string, bcolors.WARNING + string + bcolors.ENDC)
-                    stringsFound.append("line "+str(idx)+" : "+string)
+                    has_match = True
+
+            if not has_match:
+                for string in hex_strings:
+                    hexEntropy = shannon_entropy(string, HEX_CHARS)
+                    if hexEntropy > 3 and keyfilter(string) is not None:
+                        printableDiff = printableDiff.replace(string, bcolors.WARNING + string + bcolors.ENDC)
+                        stringsFound.append("line "+str(idx)+" : "+string)
     entropicDiff = None
     if len(stringsFound) > 0:
         entropicDiff = {}
