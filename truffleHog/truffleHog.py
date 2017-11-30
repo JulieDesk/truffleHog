@@ -293,7 +293,7 @@ def find_entropy(printableDiff, commit_time=None, branch_name=None, prev_commit=
             hex_strings = get_strings_of_set(word, HEX_CHARS)
             for string in base64_strings:
                 b64Entropy = shannon_entropy(string, BASE64_CHARS)
-                if b64Entropy > 4.5 and keyfilter(string) is not None:
+                if b64Entropy > 4.8 and keyfilter(string) is not None:
                     printableDiff = printableDiff.replace(string, bcolors.WARNING + string + bcolors.ENDC)
                     stringsFound.append("line "+str(idx)+" : "+string)
                     has_match = True
