@@ -16,7 +16,7 @@ from git import Repo
 from urlparse import urlparse
 
 BASE64_CHARS = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/=@#&\"'(§!)°-_^¨$*€%£`,?;:\\<>~"
-HEX_CHARS = "1234567890abcdefABCDEF"
+HEX_CHARS = "1234567890abcdefABCDEF-"
 
 file_filter_patterns = []
 file_whitelist = []
